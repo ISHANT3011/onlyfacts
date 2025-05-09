@@ -43,10 +43,14 @@ const Fact = mongoose.model('Fact', factSchema);
 // Routes
 // Get current fact
 app.get('/api/facts', async (req, res) => {
+    console.log('Received request for /api/facts');
     try {
+        console.log('Attempting to find latest fact...');
         const fact = await Fact.findOne().sort({ publishedAt: -1 });
-        res.json(fact);
+        console.log('Found fact:', fact);
+        res.json(fact || { message: 'No facts found' });
     } catch (error) {
+        console.error('Error fetching fact:', error);
         res.status(500).json({ message: error.message });
     }
 });
