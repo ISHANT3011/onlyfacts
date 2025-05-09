@@ -10,7 +10,8 @@
     "build": "echo \"No build step required\""
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": "18.x",
+    "npm": "9.x"
   },
   "keywords": ["facts", "daily", "voting"],
   "author": "",
