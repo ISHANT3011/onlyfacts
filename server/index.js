@@ -32,6 +32,15 @@ app.get('/', (req, res) => {
 });
 
 // MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+    console.error('MONGODB_URI is not defined');
+    process.exit(1);
+}
+
+console.log('MongoDB URI format check:', 
+    MONGODB_URI.startsWith('mongodb+srv://') ? 'Valid Atlas URI' : 'Not an Atlas URI');
+
 const mongoOptions = {
     useNewUrlParser: true,
     useUnifiedTopology: true,
@@ -39,28 +48,39 @@ const mongoOptions = {
     socketTimeoutMS: 45000,
     connectTimeoutMS: 30000,
     keepAlive: true,
-    keepAliveInitialDelay: 300000
+    keepAliveInitialDelay: 300000,
+    retryWrites: true,
+    w: 'majority',
+    wtimeout: 2500
 };
 
 const connectWithRetry = async () => {
-    const maxRetries = 10;
+    const maxRetries = 5;
     let retries = 0;
 
     while (retries < maxRetries) {
         try {
             console.log(`MongoDB connection attempt ${retries + 1}/${maxRetries}`);
-            await mongoose.connect(process.env.MONGODB_URI, mongoOptions);
-            console.log('MongoDB connected successfully');
+            console.log('Connecting with options:', JSON.stringify(mongoOptions, null, 2));
+            
+            const conn = await mongoose.connect(MONGODB_URI, mongoOptions);
+            console.log(`MongoDB connected to ${conn.connection.name} database`);
+            console.log('Connection state:', mongoose.connection.readyState);
+            
             isReady = true;
             return;
         } catch (err) {
             console.error('MongoDB connection error:', err.message);
+            console.error('Error name:', err.name);
+            console.error('Error code:', err.code);
+            
             retries++;
             if (retries === maxRetries) {
                 console.error('Max retries reached. Could not connect to MongoDB.');
                 isReady = false;
                 return;
             }
+            
             const delay = Math.min(1000 * Math.pow(2, retries), 10000);
             console.log(`Waiting ${delay}ms before next attempt...`);
             await new Promise(resolve => setTimeout(resolve, delay));
@@ -70,30 +90,35 @@ const connectWithRetry = async () => {
 
 // Handle MongoDB events
 mongoose.connection.on('connected', () => {
-    console.log('MongoDB connected');
+    console.log('MongoDB connected event fired');
     isReady = true;
 });
 
 mongoose.connection.on('error', (err) => {
-    console.error('MongoDB error:', err);
+    console.error('MongoDB error event:', err);
     isReady = false;
 });
 
 mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected');
+    console.log('MongoDB disconnected event fired');
     isReady = false;
-    connectWithRetry(); // Try to reconnect
+    // Only try to reconnect if we haven't already hit max retries
+    if (mongoose.connection.readyState === 0) {
+        console.log('Attempting to reconnect...');
+        connectWithRetry();
+    }
 });
 
 // Handle process termination
 process.on('SIGINT', () => {
-    mongoose.connection.close(() => {
-        console.log('MongoDB disconnected through app termination');
+    mongoose.connection.close(false, () => {
+        console.log('MongoDB connection closed through app termination');
         process.exit(0);
     });
 });
 
 // Initial connection
+console.log('Starting initial MongoDB connection...');
 connectWithRetry();
 
 // Fact Schema
