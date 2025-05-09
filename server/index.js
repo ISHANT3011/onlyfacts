@@ -112,71 +112,116 @@ const Fact = mongoose.model('Fact', factSchema);
 
 // Routes
 // Get current fact
-// Get current fact
-app.get('/api/facts', async (req, res) => {
-    console.log('GET /api/facts');
-    
+// Middleware to check database readiness
+const checkDatabaseReady = (req, res, next) => {
     if (!isReady) {
+        console.log('Database not ready, returning 503');
         return res.status(503).json({
             message: 'Service is starting up, please try again in a few seconds',
             retryAfter: 5
         });
     }
+    next();
+};
 
+// Get current fact
+app.get('/api/facts', checkDatabaseReady, async (req, res) => {
+    console.log('GET /api/facts - Database is ready');
     try {
-        const fact = await Fact.findOne().sort({ publishedAt: -1 });
-        console.log('Found fact:', fact ? 'yes' : 'no');
-        res.json(fact || { message: 'No facts found' });
+        const fact = await Fact.findOne().sort({ publishedAt: -1 }).maxTimeMS(5000);
+        console.log('Query result:', fact ? 'Found fact' : 'No facts found');
+        if (!fact) {
+            return res.json({ message: 'No facts found' });
+        }
+        res.json(fact);
     } catch (error) {
-        console.error('Error fetching fact:', error);
+        console.error('Error in /api/facts:', error);
+        if (error.name === 'MongooseError' || error.name === 'MongoError') {
+            return res.status(503).json({
+                message: 'Database operation failed, please try again',
+                retryAfter: 5
+            });
+        }
         res.status(500).json({ message: 'Internal server error' });
     }
 });
 
 // Add new fact (admin only - you should add authentication)
-app.post('/api/fact', async (req, res) => {
+app.post('/api/fact', checkDatabaseReady, async (req, res) => {
+    console.log('POST /api/fact - Adding new fact');
     try {
+        if (!req.body.content) {
+            return res.status(400).json({ message: 'Content is required' });
+        }
+
         const fact = new Fact({
             content: req.body.content,
             publishedAt: new Date()
         });
-        const newFact = await fact.save();
+
+        const newFact = await fact.save().maxTimeMS(5000);
+        console.log('New fact created:', newFact._id);
         res.status(201).json(newFact);
     } catch (error) {
+        console.error('Error creating fact:', error);
+        if (error.name === 'MongooseError' || error.name === 'MongoError') {
+            return res.status(503).json({
+                message: 'Database operation failed, please try again',
+                retryAfter: 5
+            });
+        }
         res.status(400).json({ message: error.message });
     }
 });
 
 // Update fact votes
-app.patch('/api/fact/:id/vote', async (req, res) => {
+app.patch('/api/fact/:id/vote', checkDatabaseReady, async (req, res) => {
+    console.log('PATCH /api/fact/:id/vote - Updating votes');
     try {
-        const { type, userId } = req.body; // 'agree' or 'disagree'
-        const fact = await Fact.findById(req.params.id);
+        const { type, userId } = req.body;
         
-        // Check if user has already voted
-        const existingVote = fact.voters.find(voter => voter.userId === userId);
-        if (existingVote) {
-            return res.status(400).json({ 
-                message: 'You have already voted on this fact',
-                hasVoted: true,
-                previousVote: existingVote.vote
-            });
+        if (!type || !userId) {
+            return res.status(400).json({ message: 'Type and userId are required' });
         }
 
-        // Add new vote
-        if (type === 'agree') {
-            fact.agrees += 1;
-        } else if (type === 'disagree') {
-            fact.disagrees += 1;
+        if (!['agree', 'disagree'].includes(type)) {
+            return res.status(400).json({ message: 'Invalid vote type' });
         }
+
+        const fact = await Fact.findById(req.params.id).maxTimeMS(5000);
         
-        // Record the voter
-        fact.voters.push({ userId, vote: type });
+        if (!fact) {
+            return res.status(404).json({ message: 'Fact not found' });
+        }
+
+        // Check if user has already voted
+        const existingVote = fact.voters.find(v => v.userId === userId);
+        if (existingVote) {
+            if (existingVote.vote === type) {
+                return res.status(400).json({ message: 'Already voted' });
+            }
+            // Remove previous vote
+            fact[existingVote.vote === 'agree' ? 'agrees' : 'disagrees']--;
+            existingVote.vote = type;
+        } else {
+            fact.voters.push({ userId, vote: type });
+        }
+
+        // Update vote count
+        fact[type === 'agree' ? 'agrees' : 'disagrees']++;
         
-        const updatedFact = await fact.save();
-        res.json(updatedFact);
+        await fact.save().maxTimeMS(5000);
+        console.log('Vote updated for fact:', fact._id);
+        res.json(fact);
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error('Error updating vote:', error);
+        if (error.name === 'MongooseError' || error.name === 'MongoError') {
+            return res.status(503).json({
+                message: 'Database operation failed, please try again',
+                retryAfter: 5
+            });
+        }
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
