@@ -100,8 +100,6 @@ app.patch('/api/fact/:id/vote', async (req, res) => {
     }
 });
 
-const PORT = process.env.PORT || 5000;
-
 // Basic error handling
 app.use((err, req, res, next) => {
     console.error(err.stack);
@@ -113,8 +111,13 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', mongodb: mongoose.connection.readyState === 1 });
 });
 
-server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
+const port = process.env.PORT || 5000;
+server = app.listen(port, '0.0.0.0', () => {
+    console.log('Server startup configuration:');
+    console.log(`- Port: ${port}`);
+    console.log(`- Node Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`- CORS Origin: ${process.env.CORS_ORIGIN}`);
+    console.log('Server is now running! 🚀');
 });
 
 // Handle process termination

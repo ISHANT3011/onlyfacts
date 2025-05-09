@@ -2,10 +2,16 @@ services:
   - type: web
     name: onlyfacts-api
     env: node
+    region: singapore
+    plan: free
     buildCommand: npm install
-    startCommand: node index.js
+    startCommand: npm start
     envVars:
       - key: MONGODB_URI
         sync: false
+      - key: PORT
+        value: 10000
       - key: CORS_ORIGIN
         value: https://onlyfacts-daily.windsurf.build
+    healthCheckPath: /health
+    autoDeploy: true
