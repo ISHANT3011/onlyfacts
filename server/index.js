@@ -256,31 +256,57 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: 'Something went wrong!' });
 });
 
-const PORT = process.env.PORT || 5000;
+const startServer = () => {
+    const PORT = process.env.PORT || 5000;
+    console.log('Starting server on port:', PORT);
+    console.log('Node environment:', process.env.NODE_ENV);
 
-const server = app.listen(PORT, () => {
-    console.log(`Server is listening on port ${PORT}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received. Shutting down gracefully...');
-    server.close(() => {
-        console.log('Server closed');
-        mongoose.connection.close(false, () => {
-            console.log('MongoDB connection closed');
-            process.exit(0);
-        });
+    const server = app.listen(PORT, '0.0.0.0', () => {
+        console.log(`Server is running at http://0.0.0.0:${PORT}`);
+        console.log('Process ID:', process.pid);
+    }).on('error', (err) => {
+        console.error('Server error:', err);
+        process.exit(1);
     });
-});
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received. Shutting down gracefully...');
-    server.close(() => {
-        console.log('Server closed');
-        mongoose.connection.close(false, () => {
-            console.log('MongoDB connection closed');
-            process.exit(0);
-        });
+    // Handle server-specific events
+    server.on('listening', () => {
+        console.log('Server is in listening state');
     });
+
+    server.on('connection', () => {
+        console.log('New client connection established');
+    });
+
+    // Graceful shutdown handlers
+    const gracefulShutdown = (signal) => {
+        console.log(`${signal} received. Starting graceful shutdown...`);
+        server.close(async () => {
+            console.log('Server stopped accepting new connections');
+            try {
+                await mongoose.connection.close(false);
+                console.log('MongoDB connection closed');
+                console.log('Graceful shutdown completed');
+                process.exit(0);
+            } catch (err) {
+                console.error('Error during shutdown:', err);
+                process.exit(1);
+            }
+        });
+
+        // Force shutdown after 30 seconds
+        setTimeout(() => {
+            console.error('Could not close connections in time, forcefully shutting down');
+            process.exit(1);
+        }, 30000);
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+};
+
+// Start server after MongoDB connection is ready
+mongoose.connection.once('connected', () => {
+    console.log('MongoDB connected, starting server...');
+    startServer();
 });
