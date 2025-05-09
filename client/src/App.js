@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import './App.css';
 import config from './config';
 
@@ -6,6 +7,7 @@ function App() {
   const [fact, setFact] = useState(null);
   const [timeLeft, setTimeLeft] = useState('');
   const [userVote, setUserVote] = useState(null);
+  const [timeElapsed, setTimeElapsed] = useState(null);
 
   // Generate a unique user ID if not exists
   useEffect(() => {
@@ -16,11 +18,32 @@ function App() {
     }
   }, []);
 
+  // Update timer function
+  const updateTimer = useCallback(() => {
+    if (fact) {
+      const publishDate = new Date(fact.publishedAt);
+      const now = new Date();
+      const diff = Math.floor((now - publishDate) / 1000);
+      setTimeElapsed(diff);
+    }
+  }, [fact]);
+
+  // Fetch current fact when component mounts
+  const fetchCurrentFact = useCallback(async () => {
+    try {
+      const response = await fetch(`${config.API_URL}/api/fact/current`);
+      const data = await response.json();
+      setFact(data);
+    } catch (error) {
+      console.error('Error fetching fact:', error);
+    }
+  }, [config.API_URL]);
+
   useEffect(() => {
     fetchCurrentFact();
     const timer = setInterval(updateTimer, 1000);
     return () => clearInterval(timer);
-  }, [updateTimer]);
+  }, [fetchCurrentFact, updateTimer]);
 
   // Check if user has already voted when fact loads
   useEffect(() => {
@@ -31,27 +54,14 @@ function App() {
     }
   }, [fact]);
 
-  const fetchCurrentFact = async () => {
-    try {
-      const response = await fetch(`${config.API_URL}/api/fact/current`);
-      const data = await response.json();
-      setFact(data);
-    } catch (error) {
-      console.error('Error fetching fact:', error);
+  useEffect(() => {
+    if (timeElapsed) {
+      const hours = Math.floor(timeElapsed / (1000 * 60 * 60));
+      const minutes = Math.floor((timeElapsed % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((timeElapsed % (1000 * 60)) / 1000);
+      setTimeLeft(`Time elapsed: ${hours}h ${minutes}m ${seconds}s`);
     }
-  };
-
-  const updateTimer = () => {
-    if (fact) {
-      const publishDate = new Date(fact.publishedAt);
-      const now = new Date();
-      const diff = 24 * 60 * 60 * 1000 - (now - publishDate); // Count down instead of up
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      setTimeLeft(`Time remaining: ${hours}h ${minutes}m ${seconds}s`);
-    }
-  };
+  }, [timeElapsed]);
 
   const handleVote = async (type) => {
     if (!fact) return;
