@@ -35,7 +35,12 @@ app.get('/', (req, res) => {
 const connectDB = async () => {
     try {
         console.log('Connecting to MongoDB...');
-        await mongoose.connect(process.env.MONGODB_URI);
+        await mongoose.connect(process.env.MONGODB_URI, {
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
+            connectTimeoutMS: 10000,
+            heartbeatFrequencyMS: 30000
+        });
         console.log('MongoDB connected successfully');
         isReady = true;
         return true;
@@ -48,7 +53,7 @@ const connectDB = async () => {
 
 // Retry connection if it fails
 let retries = 0;
-const maxRetries = 5;
+const maxRetries = 10; // Increased max retries
 
 const attemptConnection = async () => {
     while (retries < maxRetries && !isReady) {
@@ -56,13 +61,29 @@ const attemptConnection = async () => {
         if (await connectDB()) {
             break;
         }
+        const delay = Math.min(1000 * Math.pow(2, retries), 10000); // Exponential backoff with max 10s
+        console.log(`Waiting ${delay}ms before next attempt...`);
         retries++;
-        await new Promise(resolve => setTimeout(resolve, 5000));
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
+    
+    if (!isReady) {
+        console.error('Failed to connect to MongoDB after all retries');
     }
 };
 
 // Start connection process
 attemptConnection();
+
+// Handle MongoDB disconnection
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected!');
+    isReady = false;
+    if (retries < maxRetries) {
+        console.log('Attempting to reconnect...');
+        attemptConnection();
+    }
+});
 
 // Fact Schema
 const factSchema = new mongoose.Schema({
