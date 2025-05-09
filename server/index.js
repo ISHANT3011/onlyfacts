@@ -14,19 +14,12 @@ app.use(cors({
 app.use(express.json());
 
 // MongoDB connection
-let server;
-
-async function connectDB() {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI);
-        console.log('Connected to MongoDB');
-    } catch (err) {
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('Connected to MongoDB'))
+    .catch(err => {
         console.error('MongoDB connection error:', err);
         process.exit(1);
-    }
-}
-
-connectDB();
+    });
 
 // Fact Schema
 const factSchema = new mongoose.Schema({
@@ -112,28 +105,6 @@ app.get('/health', (req, res) => {
 });
 
 const port = process.env.PORT || 5000;
-server = app.listen(port, '0.0.0.0', () => {
-    console.log('Server startup configuration:');
-    console.log(`- Port: ${port}`);
-    console.log(`- Node Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`- CORS Origin: ${process.env.CORS_ORIGIN}`);
-    console.log('Server is now running! 🚀');
+app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
 });
-
-// Handle process termination
-process.on('SIGTERM', gracefulShutdown);
-process.on('SIGINT', gracefulShutdown);
-
-async function gracefulShutdown() {
-    console.log('Received shutdown signal');
-    try {
-        await server.close();
-        console.log('HTTP server closed');
-        await mongoose.connection.close();
-        console.log('MongoDB connection closed');
-        process.exit(0);
-    } catch (err) {
-        console.error('Error during shutdown:', err);
-        process.exit(1);
-    }
-}

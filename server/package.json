@@ -4,14 +4,10 @@
   "description": "Backend server for OnlyFacts application",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "echo \"No build step required\""
+    "start": "node index.js"
   },
   "engines": {
-    "node": "18.x",
-    "npm": "9.x"
+    "node": "18.x"
   },
   "keywords": ["facts", "daily", "voting"],
   "author": "",
