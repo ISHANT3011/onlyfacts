@@ -19,12 +19,23 @@ app.get('/', (req, res) => {
 });
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('Connected to MongoDB'))
-    .catch(err => {
+const connectDB = async () => {
+    try {
+        console.log('Attempting to connect to MongoDB...');
+        await mongoose.connect(process.env.MONGODB_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+        });
+        console.log('Successfully connected to MongoDB');
+    } catch (err) {
         console.error('MongoDB connection error:', err);
         process.exit(1);
-    });
+    }
+};
+
+connectDB();
 
 // Fact Schema
 const factSchema = new mongoose.Schema({
