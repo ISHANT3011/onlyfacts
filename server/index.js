@@ -3,61 +3,66 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 require('dotenv').config();
 
-const app = express();
-let isConnected = false;
+console.log('Starting server...');
+console.log('Node environment:', process.env.NODE_ENV);
+console.log('Port:', process.env.PORT);
 
-// Middleware
-app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PATCH'],
-    credentials: true
-}));
+const app = express();
+let isReady = false;
+
+// Basic middleware
+app.use(cors());
 app.use(express.json());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        ready: isReady,
+        time: new Date().toISOString()
+    });
+});
 
 // Root endpoint
 app.get('/', (req, res) => {
     res.json({ 
         message: 'OnlyFacts API is running',
-        dbStatus: isConnected ? 'connected' : 'disconnected'
+        ready: isReady
     });
 });
 
 // MongoDB connection
 const connectDB = async () => {
-    if (isConnected) {
-        console.log('Using existing MongoDB connection');
-        return;
-    }
-
     try {
-        console.log('Attempting to connect to MongoDB...');
-        console.log('MongoDB URI:', process.env.MONGODB_URI.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@/, 'mongodb+srv://$1:****@'));
-        
-        await mongoose.connect(process.env.MONGODB_URI, {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 10000,
-            socketTimeoutMS: 45000,
-        });
-        
-        isConnected = true;
-        console.log('Successfully connected to MongoDB');
+        console.log('Connecting to MongoDB...');
+        await mongoose.connect(process.env.MONGODB_URI);
+        console.log('MongoDB connected successfully');
+        isReady = true;
+        return true;
     } catch (err) {
         console.error('MongoDB connection error:', err);
-        isConnected = false;
-        // Don't exit process, just log the error
-        console.log('Will retry connection on next request');
+        isReady = false;
+        return false;
     }
 };
 
-// Handle MongoDB disconnection
-mongoose.connection.on('disconnected', () => {
-    console.log('MongoDB disconnected!');
-    isConnected = false;
-});
+// Retry connection if it fails
+let retries = 0;
+const maxRetries = 5;
 
-// Initial connection
-connectDB();
+const attemptConnection = async () => {
+    while (retries < maxRetries && !isReady) {
+        console.log(`Connection attempt ${retries + 1} of ${maxRetries}`);
+        if (await connectDB()) {
+            break;
+        }
+        retries++;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+};
+
+// Start connection process
+attemptConnection();
 
 // Fact Schema
 const factSchema = new mongoose.Schema({
@@ -75,28 +80,24 @@ const Fact = mongoose.model('Fact', factSchema);
 
 // Routes
 // Get current fact
+// Get current fact
 app.get('/api/facts', async (req, res) => {
-    console.log('Received request for /api/facts');
-
-    if (!isConnected) {
-        console.log('MongoDB not connected, attempting to reconnect...');
-        await connectDB();
-        if (!isConnected) {
-            return res.status(503).json({ 
-                message: 'Database connection unavailable',
-                retryAfter: 5
-            });
-        }
+    console.log('GET /api/facts');
+    
+    if (!isReady) {
+        return res.status(503).json({
+            message: 'Service is starting up, please try again in a few seconds',
+            retryAfter: 5
+        });
     }
 
     try {
-        console.log('Attempting to find latest fact...');
         const fact = await Fact.findOne().sort({ publishedAt: -1 });
-        console.log('Found fact:', fact);
+        console.log('Found fact:', fact ? 'yes' : 'no');
         res.json(fact || { message: 'No facts found' });
     } catch (error) {
         console.error('Error fetching fact:', error);
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
@@ -153,12 +154,31 @@ app.use((err, req, res, next) => {
     res.status(500).json({ message: 'Something went wrong!' });
 });
 
-// Add a health check endpoint
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', mongodb: mongoose.connection.readyState === 1 });
+const PORT = process.env.PORT || 5000;
+
+const server = app.listen(PORT, () => {
+    console.log(`Server is listening on port ${PORT}`);
 });
 
-const port = process.env.PORT || 5000;
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        mongoose.connection.close(false, () => {
+            console.log('MongoDB connection closed');
+            process.exit(0);
+        });
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received. Shutting down gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        mongoose.connection.close(false, () => {
+            console.log('MongoDB connection closed');
+            process.exit(0);
+        });
+    });
 });
