@@ -4,6 +4,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const app = express();
+let isConnected = false;
 
 // Middleware
 app.use(cors({
@@ -15,26 +16,47 @@ app.use(express.json());
 
 // Root endpoint
 app.get('/', (req, res) => {
-    res.json({ message: 'OnlyFacts API is running' });
+    res.json({ 
+        message: 'OnlyFacts API is running',
+        dbStatus: isConnected ? 'connected' : 'disconnected'
+    });
 });
 
 // MongoDB connection
 const connectDB = async () => {
+    if (isConnected) {
+        console.log('Using existing MongoDB connection');
+        return;
+    }
+
     try {
         console.log('Attempting to connect to MongoDB...');
+        console.log('MongoDB URI:', process.env.MONGODB_URI.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@/, 'mongodb+srv://$1:****@'));
+        
         await mongoose.connect(process.env.MONGODB_URI, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 10000,
             socketTimeoutMS: 45000,
         });
+        
+        isConnected = true;
         console.log('Successfully connected to MongoDB');
     } catch (err) {
         console.error('MongoDB connection error:', err);
-        process.exit(1);
+        isConnected = false;
+        // Don't exit process, just log the error
+        console.log('Will retry connection on next request');
     }
 };
 
+// Handle MongoDB disconnection
+mongoose.connection.on('disconnected', () => {
+    console.log('MongoDB disconnected!');
+    isConnected = false;
+});
+
+// Initial connection
 connectDB();
 
 // Fact Schema
@@ -55,6 +77,18 @@ const Fact = mongoose.model('Fact', factSchema);
 // Get current fact
 app.get('/api/facts', async (req, res) => {
     console.log('Received request for /api/facts');
+
+    if (!isConnected) {
+        console.log('MongoDB not connected, attempting to reconnect...');
+        await connectDB();
+        if (!isConnected) {
+            return res.status(503).json({ 
+                message: 'Database connection unavailable',
+                retryAfter: 5
+            });
+        }
+    }
+
     try {
         console.log('Attempting to find latest fact...');
         const fact = await Fact.findOne().sort({ publishedAt: -1 });
