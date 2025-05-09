@@ -13,6 +13,11 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// Root endpoint
+app.get('/', (req, res) => {
+    res.json({ message: 'OnlyFacts API is running' });
+});
+
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB'))
