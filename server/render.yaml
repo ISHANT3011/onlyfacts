@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: onlyfacts-api
+    env: node
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://onlyfacts-daily.windsurf.build
